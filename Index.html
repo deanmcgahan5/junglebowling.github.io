@@ -1,0 +1,731 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Jungle Bowling (Mobile)</title>
+  <style>
+    html, body { height: 100%; margin: 0; background:#0b1410; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    #wrap { display:flex; height:100%; align-items:stretch; }
+    canvas { flex: 1; display:block; background:#0b1410; touch-action: none; } /* IMPORTANT for mobile */
+    #ui {
+      width: 320px; padding: 14px; box-sizing:border-box;
+      background: linear-gradient(180deg, #0d1a12, #08110c);
+      border-left: 1px solid rgba(255,255,255,.08);
+      color: rgba(255,255,255,.92);
+    }
+    h1 { font-size: 18px; margin: 0 0 8px; letter-spacing:.3px; }
+    .small { font-size: 12px; opacity:.8; line-height:1.35; }
+    .panel {
+      margin-top: 12px; padding: 10px; border: 1px solid rgba(255,255,255,.10);
+      border-radius: 12px; background: rgba(255,255,255,.03);
+    }
+    .row { display:flex; justify-content:space-between; margin: 6px 0; font-size: 13px; }
+    button {
+      width: 100%; padding: 10px; margin-top: 8px; border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06); color: rgba(255,255,255,.95);
+      cursor:pointer; font-weight:600;
+    }
+    button:hover { background: rgba(255,255,255,.10); }
+    button:disabled { opacity: .4; cursor:not-allowed; }
+    .btnRow { display:flex; gap: 10px; margin-top: 8px; }
+    .btnRow button { width: 50%; margin-top: 0; }
+    kbd {
+      padding: 2px 6px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.06);
+      font-size: 12px;
+    }
+    .tag { display:inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px;
+      border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); margin: 4px 6px 0 0;
+    }
+    .ok { color:#b8ffcc; }
+    .warn { color:#ffd7a3; }
+    .bad { color:#ffb4b4; }
+
+    /* Small screens: UI becomes bottom panel */
+    @media (max-width: 900px) {
+      #wrap { flex-direction: column; }
+      #ui { width: 100%; border-left: none; border-top: 1px solid rgba(255,255,255,.08); }
+      canvas { height: 55vh; }
+    }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <h1>Jungle Bowling</h1>
+    <div class="small">
+      Drag on the lane to aim + set power, release to shoot.<br/>
+      Spin: <kbd>Q</kbd>/<kbd>E</kbd> (desktop) or buttons below (mobile).
+    </div>
+
+    <div class="panel">
+      <div class="btnRow">
+        <button id="spinL">⟲ Spin Left</button>
+        <button id="spinR">Spin Right ⟳</button>
+      </div>
+      <button id="spin0">Reset Spin</button>
+    </div>
+
+    <div class="panel" id="statusPanel">
+      <div class="row"><div>Score</div><div id="score">0</div></div>
+      <div class="row"><div>Coins</div><div id="coins">0</div></div>
+      <div class="row"><div>Shots Left</div><div id="shots">5</div></div>
+      <div class="row"><div>Spin</div><div id="spin">0</div></div>
+      <div class="row"><div>Ball Status</div><div id="ballStatus" class="ok">Ready</div></div>
+      <div style="margin-top:8px" class="small">
+        Upgrades: <span class="tag" id="tagSpike">Spike Ring: OFF</span>
+        <span class="tag" id="tagRepel">Repellent: OFF</span>
+        <span class="tag" id="tagHeavy">Heavier Ball: OFF</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="font-weight:700; margin-bottom:6px;">Shop (between shots)</div>
+
+      <div class="row"><div>Spike Ring</div><div>20</div></div>
+      <div class="small">Animals can’t steal your ball (they bounce off).</div>
+      <button id="buySpike">Buy Spike Ring (20)</button>
+
+      <div class="row" style="margin-top:10px;"><div>Repellent</div><div>15</div></div>
+      <div class="small">Fewer animals cross the lane.</div>
+      <button id="buyRepel">Buy Repellent (15)</button>
+
+      <div class="row" style="margin-top:10px;"><div>Heavier Ball</div><div>25</div></div>
+      <div class="small">Less curve from spin, more momentum.</div>
+      <button id="buyHeavy">Buy Heavier Ball (25)</button>
+
+      <button id="nextRun" style="margin-top:14px;">Restart Run</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(canvas.clientWidth * dpr);
+    canvas.height = Math.floor(canvas.clientHeight * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resize);
+
+  let W=0, H=0;
+  function layout() { W = canvas.clientWidth; H = canvas.clientHeight; }
+
+  const ui = {
+    score: document.getElementById('score'),
+    coins: document.getElementById('coins'),
+    shots: document.getElementById('shots'),
+    spin: document.getElementById('spin'),
+    ballStatus: document.getElementById('ballStatus'),
+    tagSpike: document.getElementById('tagSpike'),
+    tagRepel: document.getElementById('tagRepel'),
+    tagHeavy: document.getElementById('tagHeavy'),
+    buySpike: document.getElementById('buySpike'),
+    buyRepel: document.getElementById('buyRepel'),
+    buyHeavy: document.getElementById('buyHeavy'),
+    nextRun: document.getElementById('nextRun'),
+    spinL: document.getElementById('spinL'),
+    spinR: document.getElementById('spinR'),
+    spin0: document.getElementById('spin0'),
+  };
+
+  const state = {
+    score: 0,
+    coins: 0,
+    shotsLeft: 5,
+    aiming: false,
+    aimStart: {x:0,y:0},
+    aimNow: {x:0,y:0},
+    spin: 0,
+    shotInMotion: false,
+    endedShot: false,
+    upgrades: { spike:false, repel:false, heavy:false },
+  };
+
+  const COST = { spike:20, repel:15, heavy:25 };
+
+  function laneRect() {
+    const laneW = Math.min(520, W * 0.82);
+    const laneX = Math.max(18, (W - laneW) / 2);
+    const laneY = 18;
+    const laneH = H - 36;
+    return {x: laneX, y: laneY, w: laneW, h: laneH};
+  }
+
+  const ball = { x:0, y:0, r:12, vx:0, vy:0, alive:true, stolen:false };
+
+  let pins = [];
+  function resetPins() {
+    pins = [];
+    const L = laneRect();
+    const baseY = L.y + 80;
+    const centerX = L.x + L.w/2;
+    const spacing = 22;
+    const rows = 4;
+    let idx = 0;
+    for (let r=0;r<rows;r++){
+      for (let c=0;c<=r;c++){
+        const x = centerX + (c - r/2)*spacing;
+        const y = baseY + r*spacing;
+        pins.push({x,y, r:8, up:true, id: idx++});
+      }
+    }
+  }
+
+  let animals = [];
+  const animalTypes = [
+    {name:'monkey', speed: 70, size: 14},
+    {name:'boar', speed: 90, size: 16},
+    {name:'parrot', speed: 110, size: 12},
+  ];
+  function spawnAnimal() {
+    const L = laneRect();
+    const type = animalTypes[Math.floor(Math.random()*animalTypes.length)];
+    const fromLeft = Math.random() < 0.5;
+    const y = L.y + 160 + Math.random()*(L.h - 260);
+    const x = fromLeft ? (L.x - 30) : (L.x + L.w + 30);
+    const vx = (fromLeft ? 1 : -1) * (type.speed * (0.85 + Math.random()*0.5));
+    animals.push({ type, x, y, vx, r: type.size, alive:true });
+  }
+
+  function resetBall() {
+    const L = laneRect();
+    ball.x = L.x + L.w/2;
+    ball.y = L.y + L.h - 60;
+    ball.vx = 0; ball.vy = 0;
+    ball.alive = true;
+    ball.stolen = false;
+    state.shotInMotion = false;
+    state.endedShot = false;
+    state.spin = clamp(state.spin, -1.5, 1.5);
+  }
+
+  function startRun() {
+    state.score = 0;
+    state.coins = 0;
+    state.shotsLeft = 5;
+    state.spin = 0;
+    state.aiming = false;
+    state.shotInMotion = false;
+    state.endedShot = false;
+    state.upgrades = { spike:false, repel:false, heavy:false };
+    animals = [];
+    resetPins();
+    resetBall();
+    syncUI();
+  }
+
+  function inLane(px,py) {
+    const L = laneRect();
+    return px>=L.x && px<=L.x+L.w && py>=L.y && py<=L.y+L.h;
+  }
+
+  // Pointer events: works on mobile + desktop
+  canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    if (state.shotInMotion || state.shotsLeft<=0) return;
+    if (!ball.alive) return;
+    if (!inLane(mx,my)) return;
+
+    canvas.setPointerCapture(e.pointerId);
+    state.aiming = true;
+    state.aimStart = {x: mx, y: my};
+    state.aimNow = {x: mx, y: my};
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!state.aiming) return;
+    const rect = canvas.getBoundingClientRect();
+    state.aimNow = {x: e.clientX - rect.left, y: e.clientY - rect.top};
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    if (!state.aiming) return;
+    state.aiming = false;
+    shootFromAim();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'q' || e.key === 'Q' || e.key === 'a' || e.key === 'A') { state.spin = clamp(state.spin - 0.12, -1.5, 1.5); syncUI(); }
+    if (e.key === 'e' || e.key === 'E' || e.key === 'd' || e.key === 'D') { state.spin = clamp(state.spin + 0.12, -1.5, 1.5); syncUI(); }
+  });
+
+  // Mobile spin buttons
+  ui.spinL.onclick = () => { state.spin = clamp(state.spin - 0.12, -1.5, 1.5); syncUI(); };
+  ui.spinR.onclick = () => { state.spin = clamp(state.spin + 0.12, -1.5, 1.5); syncUI(); };
+  ui.spin0.onclick = () => { state.spin = 0; syncUI(); };
+
+  function shootFromAim() {
+    if (state.shotInMotion || state.shotsLeft<=0) return;
+
+    const dx = state.aimStart.x - state.aimNow.x;
+    const dy = state.aimStart.y - state.aimNow.y;
+    const forward = Math.max(0, dy);
+    const mag = Math.hypot(dx, forward);
+    const maxMag = 170;
+    const p = clamp(mag / maxMag, 0, 1);
+    if (p < 0.06) return;
+
+    const dirX = -dx / (mag || 1);
+    const dirY = -forward / (mag || 1);
+
+    const baseSpeed = 520;
+    const speed = baseSpeed * (0.35 + 0.75*p);
+    ball.vx = dirX * speed;
+    ball.vy = dirY * speed;
+
+    state.shotInMotion = true;
+    state.endedShot = false;
+    state.shotsLeft -= 1;
+    syncUI();
+  }
+
+  function buy(key) {
+    if (state.shotInMotion || state.aiming) return;
+    if (state.upgrades[key]) return;
+    const cost = COST[key];
+    if (state.coins < cost) return;
+    state.coins -= cost;
+    state.upgrades[key] = true;
+    syncUI();
+  }
+  ui.buySpike.onclick = () => buy('spike');
+  ui.buyRepel.onclick = () => buy('repel');
+  ui.buyHeavy.onclick = () => buy('heavy');
+  ui.nextRun.onclick = () => startRun();
+
+  function syncShopButtons() {
+    const between = !state.shotInMotion && !state.aiming && state.shotsLeft > 0;
+    ui.buySpike.disabled = !between || state.upgrades.spike || state.coins < COST.spike;
+    ui.buyRepel.disabled = !between || state.upgrades.repel || state.coins < COST.repel;
+    ui.buyHeavy.disabled = !between || state.upgrades.heavy || state.coins < COST.heavy;
+  }
+
+  function syncUI() {
+    ui.score.textContent = state.score;
+    ui.coins.textContent = state.coins;
+    ui.shots.textContent = state.shotsLeft;
+    ui.spin.textContent = state.spin.toFixed(2);
+
+    ui.tagSpike.textContent = "Spike Ring: " + (state.upgrades.spike ? "ON" : "OFF");
+    ui.tagRepel.textContent = "Repellent: " + (state.upgrades.repel ? "ON" : "OFF");
+    ui.tagHeavy.textContent = "Heavier Ball: " + (state.upgrades.heavy ? "ON" : "OFF");
+
+    ui.tagSpike.style.opacity = state.upgrades.spike ? 1 : 0.6;
+    ui.tagRepel.style.opacity = state.upgrades.repel ? 1 : 0.6;
+    ui.tagHeavy.style.opacity = state.upgrades.heavy ? 1 : 0.6;
+
+    syncShopButtons();
+  }
+
+  function setStatus(text, cls) {
+    ui.ballStatus.textContent = text;
+    ui.ballStatus.className = cls || "ok";
+  }
+
+  let lastT = performance.now();
+  function step(t) {
+    const dt = Math.min(0.033, (t - lastT) / 1000);
+    lastT = t;
+    layout();
+    update(dt);
+    render();
+    requestAnimationFrame(step);
+  }
+
+  function update(dt) {
+    const spawnRate = state.upgrades.repel ? 0.45 : 0.85;
+    if ((state.shotInMotion || state.aiming) && Math.random() < spawnRate * dt) spawnAnimal();
+
+    const L = laneRect();
+    for (const a of animals) {
+      if (!a.alive) continue;
+      a.x += a.vx * dt;
+      if (a.x < L.x - 80 || a.x > L.x + L.w + 80) a.alive = false;
+    }
+    animals = animals.filter(a => a.alive);
+
+    if (state.shotInMotion && ball.alive) {
+      const heavy = state.upgrades.heavy;
+      const friction = heavy ? 0.985 : 0.977;
+      ball.vx *= Math.pow(friction, dt*60);
+      ball.vy *= Math.pow(friction, dt*60);
+
+      const curveFactor = (heavy ? 0.55 : 1.0) * 220;
+      const forwardSpeed = Math.max(0, -ball.vy);
+      ball.vx += state.spin * curveFactor * (forwardSpeed/500) * dt;
+
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+
+      const pad = 18;
+      const left = L.x + pad;
+      const right = L.x + L.w - pad;
+      if (ball.x - ball.r < left) { ball.x = left + ball.r; ball.vx *= -0.55; }
+      if (ball.x + ball.r > right) { ball.x = right - ball.r; ball.vx *= -0.55; }
+
+      for (const p of pins) {
+        if (!p.up) continue;
+        const d = dist(ball.x, ball.y, p.x, p.y);
+        if (d < ball.r + p.r) {
+          p.up = false;
+          state.score += 10;
+          const nx = (ball.x - p.x) / (d || 1);
+          const ny = (ball.y - p.y) / (d || 1);
+          ball.vx += nx * 120;
+          ball.vy += ny * 120;
+        }
+      }
+
+      for (const a of animals) {
+        if (!a.alive) continue;
+        const d = dist(ball.x, ball.y, a.x, a.y);
+        if (d < ball.r + a.r) {
+          if (state.upgrades.spike) {
+            a.vx *= -0.9;
+            a.x += Math.sign(a.vx) * 10;
+          } else {
+            ball.alive = false;
+            ball.stolen = true;
+            state.shotInMotion = false;
+            endShot("Stolen!");
+            break;
+          }
+        }
+      }
+
+      const speed = Math.hypot(ball.vx, ball.vy);
+      const reachedTop = ball.y < L.y + 60;
+      if (reachedTop || speed < 28) {
+        state.shotInMotion = false;
+        if (ball.alive) endShot("Done");
+      }
+    }
+
+    syncShopButtons();
+  }
+
+  function endShot(reason) {
+    if (state.endedShot) return;
+    state.endedShot = true;
+
+    const down = pins.filter(p=>!p.up).length;
+    const wasStrike = (down === pins.length) && !ball.stolen;
+    if (wasStrike) state.score += 60;
+
+    const gainedCoins = Math.max(1, Math.floor(down * 0.8 + (wasStrike ? 6 : 0)));
+    state.coins += gainedCoins;
+
+    if (reason === "Stolen!") setStatus(reason, "bad");
+    else if (wasStrike) setStatus("STRIKE! +" + gainedCoins + " coins", "ok");
+    else setStatus("Shot over +" + gainedCoins + " coins", "warn");
+
+    syncUI();
+
+    setTimeout(() => {
+      if (state.shotsLeft > 0) {
+        resetPins();
+        resetBall();
+        animals = [];
+        setStatus("Ready", "ok");
+        syncUI();
+      } else {
+        setStatus("Run over — restart?", "warn");
+        syncUI();
+      }
+    }, 650);
+  }
+
+  function render() {
+    const L = laneRect();
+    ctx.clearRect(0,0,W,H);
+
+    const bg = ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0, "#07150f");
+    bg.addColorStop(1, "#030805");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0,0,W,H);
+
+    drawFoliage(L);
+    drawLane(L);
+    drawPins();
+    drawAnimals();
+    drawBall();
+    drawAimUI(L);
+  }
+
+  function drawFoliage(L) {
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    const leafColors = ["#123a22","#0f2f1c","#164626","#0b2214"];
+    function leaf(x,y,s,rot) {
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.rotate(rot);
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.quadraticCurveTo(s*0.5, -s*0.9, s*1.2, 0);
+      ctx.quadraticCurveTo(s*0.5, s*0.9, 0, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    for (let i=0;i<40;i++){
+      const leftSide = Math.random()<0.5;
+      const x = leftSide ? (L.x - 30 - Math.random()*120) : (L.x + L.w + 30 + Math.random()*120);
+      const y = 10 + Math.random()*(H-20);
+      const s = 18 + Math.random()*45;
+      ctx.fillStyle = leafColors[(Math.random()*leafColors.length)|0];
+      leaf(x,y,s, (Math.random()*0.8-0.4) + (leftSide?0.2:-0.2));
+    }
+    ctx.restore();
+  }
+
+  function drawLane(L) {
+    ctx.save();
+    roundRect(L.x, L.y, L.w, L.h, 18);
+    const g = ctx.createLinearGradient(L.x, L.y, L.x+L.w, L.y);
+    g.addColorStop(0, "#3b2a13");
+    g.addColorStop(0.5, "#4a3417");
+    g.addColorStop(1, "#36230f");
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = "#ffffff";
+    for (let i=0;i<16;i++){
+      const yy = L.y + (i+1)*(L.h/18);
+      ctx.beginPath();
+      ctx.moveTo(L.x+18, yy);
+      ctx.lineTo(L.x+L.w-18, yy);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = "rgba(255,255,255,.18)";
+    ctx.lineWidth = 2;
+    roundRect(L.x, L.y, L.w, L.h, 18);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6,10]);
+    ctx.beginPath();
+    ctx.moveTo(L.x + L.w/2, L.y + 20);
+    ctx.lineTo(L.x + L.w/2, L.y + L.h - 20);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    ctx.globalAlpha = 0.18;
+    for (let i=0;i<28;i++){
+      const x = L.x + 18 + Math.random()*(L.w-36);
+      const y = L.y + 18 + Math.random()*(L.h-36);
+      ctx.fillStyle = Math.random()<0.65 ? "#fff" : "#ffd24d";
+      ctx.beginPath();
+      ctx.arc(x,y, Math.random()*2.2+0.6, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function drawPins() {
+    for (const p of pins) {
+      ctx.save();
+      ctx.translate(p.x,p.y);
+
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.ellipse(0, 6, 10, 4, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      if (p.up) {
+        ctx.fillStyle = "#f2f4ff";
+        ctx.strokeStyle = "rgba(0,0,0,.25)";
+        ctx.lineWidth = 1;
+
+        ctx.beginPath();
+        ctx.moveTo(-6, 6);
+        ctx.quadraticCurveTo(-7, -2, -3, -8);
+        ctx.quadraticCurveTo(0, -12, 3, -8);
+        ctx.quadraticCurveTo(7, -2, 6, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(255,80,80,.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-4, -2);
+        ctx.lineTo(4, -2);
+        ctx.stroke();
+      } else {
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = "#f2f4ff";
+        ctx.beginPath();
+        ctx.roundRect(-8, -2, 16, 6, 3);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawBall() {
+    if (!ball.alive && ball.stolen) return;
+
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.ellipse(ball.x, ball.y + 10, ball.r*1.1, ball.r*0.55, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const radial = ctx.createRadialGradient(ball.x - ball.r*0.4, ball.y - ball.r*0.5, ball.r*0.2, ball.x, ball.y, ball.r*1.2);
+    radial.addColorStop(0, "#ffe08c");
+    radial.addColorStop(0.55, "#f1b63a");
+    radial.addColorStop(1, "#a96b12");
+    ctx.fillStyle = radial;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,.35)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r*0.65, Math.PI*0.15, Math.PI*1.15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawAnimals() {
+    for (const a of animals) {
+      ctx.save();
+      ctx.translate(a.x, a.y);
+
+      const name = a.type.name;
+      const facing = Math.sign(a.vx) || 1;
+      ctx.scale(facing, 1);
+
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.ellipse(0, a.r*0.8, a.r*1.1, a.r*0.45, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      let fill = "#bfe8ff", stroke = "rgba(0,0,0,.25)";
+      if (name==='monkey') fill = "#caa06a";
+      if (name==='boar') fill = "#6f6a68";
+      if (name==='parrot') fill = "#65f0a5";
+
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.2;
+
+      if (name === 'monkey') {
+        ctx.beginPath(); ctx.arc(-a.r*0.2, 0, a.r*0.75, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.roundRect(-a.r*0.2, a.r*0.3, a.r*1.4, a.r*0.8, 8); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = "rgba(0,0,0,.22)";
+        ctx.beginPath();
+        ctx.arc(a.r*1.35, a.r*0.2, a.r*0.9, Math.PI*0.9, Math.PI*1.6);
+        ctx.stroke();
+      } else if (name === 'boar') {
+        ctx.beginPath(); ctx.roundRect(-a.r*1.1, -a.r*0.4, a.r*2.4, a.r*1.2, 10); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,.7)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(a.r*0.9, a.r*0.1, a.r*0.5, Math.PI*1.15, Math.PI*1.7);
+        ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.roundRect(-a.r*0.9, -a.r*0.5, a.r*1.8, a.r*1.2, 10); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#ffd24d";
+        ctx.beginPath();
+        ctx.moveTo(a.r*0.8, -2);
+        ctx.lineTo(a.r*1.25, 2);
+        ctx.lineTo(a.r*0.8, 6);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "rgba(0,0,0,.7)";
+      ctx.beginPath(); ctx.arc(-2, -2, 1.8, 0, Math.PI*2); ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  function drawAimUI(L) {
+    if (!state.aiming) return;
+
+    const dx = state.aimStart.x - state.aimNow.x;
+    const dy = state.aimStart.y - state.aimNow.y;
+    const forward = Math.max(0, dy);
+    const mag = Math.hypot(dx, forward);
+    const maxMag = 170;
+    const p = clamp(mag / maxMag, 0, 1);
+
+    const dirX = (-dx) / (mag || 1);
+    const dirY = (-forward) / (mag || 1);
+
+    const len = 220 + p*120;
+    const x2 = ball.x + dirX * len;
+    const y2 = ball.y + dirY * len;
+
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = "rgba(255,255,255,.85)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8,10]);
+    ctx.beginPath();
+    ctx.moveTo(ball.x, ball.y);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.lineTo(x+w-r,y);
+    ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r);
+    ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+    ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);
+    ctx.closePath();
+  }
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function dist(x1,y1,x2,y2){ return Math.hypot(x1-x2, y1-y2); }
+
+  // Boot
+  const ro = new ResizeObserver(() => { resize(); layout(); });
+  ro.observe(canvas);
+
+  startRun();
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
