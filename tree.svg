@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="420" viewBox="0 0 260 420">
+  <defs>
+    <linearGradient id="bark" x1="0" x2="1">
+      <stop offset="0" stop-color="#5a3b1e"/>
+      <stop offset="1" stop-color="#3d2612"/>
+    </linearGradient>
+    <radialGradient id="leaf" cx="40%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#4ef08f"/>
+      <stop offset="1" stop-color="#0f5a2f"/>
+    </radialGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- canopy blobs -->
+  <g filter="url(#shadow)" stroke="#072b16" stroke-width="6" stroke-linejoin="round">
+    <path fill="url(#leaf)" d="M55 130c-10-55 38-92 78-82 18-36 77-40 96 0 46-10 88 26 82 76 30 22 30 76-10 96 10 40-22 76-72 72-18 40-88 40-106 0-50 10-92-26-82-72-40-18-46-70 14-90z"/>
+    <path fill="#1c7a3b" opacity="0.55" d="M55 150c6-38 42-64 78-56 24-32 62-28 78 0 38-12 70 18 66 52 24 16 22 52-8 66 10 30-14 56-56 54-16 28-68 28-82 0-42 10-74-20-66-54-28-12-34-48 -4-62z"/>
+  </g>
+
+  <!-- trunk -->
+  <g filter="url(#shadow)">
+    <path d="M128 410c-32 0-52-24-46-52 8-36 26-66 20-106-6-40-26-72-14-112 16-54 92-54 108 0 12 40-8 72-14 112-6 40 12 70 20 106 6 28-14 52-46 52z"
+          fill="url(#bark)" stroke="#1f1209" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M116 170c-6 30 10 56 10 92s-16 62-10 92" fill="none" stroke="#7a532f" stroke-width="10" opacity="0.6" stroke-linecap="round"/>
+    <path d="M148 170c6 30-10 56-10 92s16 62 10 92" fill="none" stroke="#2a190c" stroke-width="10" opacity="0.35" stroke-linecap="round"/>
+  </g>
+
+  <!-- vines -->
+  <g stroke="#2bb76c" stroke-width="6" stroke-linecap="round" opacity="0.75">
+    <path d="M40 180c30 50 30 120 0 170"/>
+    <path d="M220 160c-24 60-22 140 6 200"/>
+  </g>
+</svg>
